@@ -91,18 +91,6 @@ func handleMessage(msg *openwechat.Message) {
 				"不是你想的都是钱堆出来的普通人哪有那么多钱")
 		}
 
-		if msg.Content == "sp" {
-			// 打开本地文件发送视频
-			video, err := os.Open("./download/douyin1.mp4")
-			fmt.Println("为什么不输出")
-
-			if err != nil {
-				fmt.Println("err", err)
-				return
-			}
-			defer video.Close()
-			msg.ReplyVideo(video)
-		}
 		//如果消息是以@铲车司机bot  开头的
 		// 如果消息是包含douyin.com的链接
 		if strings.Contains(msg.Content, "douyin.com") {
