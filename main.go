@@ -32,9 +32,9 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-
-	// Handle messages
-	bot.MessageHandler = handleMessage
+	// 处理群聊消息
+	//bot.MessageHandler = handleMessage
+	bot.MessageHandler = handleMessageByGroup
 
 	// Block the main goroutine until an exception occurs or the user exits
 	bot.Block()
@@ -53,141 +53,78 @@ func performHotLogin(bot *openwechat.Bot, reloadStorage openwechat.HotReloadStor
 	return nil
 }
 
-func handleMessage(msg *openwechat.Message) {
-	msgId := msg.MsgId
-	msg.Set(msgId, msg.Content)
-
-	if msg.IsText() && msg.Content == "ping" {
-		msg.ReplyText("pong")
+func handleMessageByGroup(msg *openwechat.Message) {
+	if !msg.IsSendByGroup() {
+		return
 	}
 
-	if msg.IsText() && msg.Content == "摸鱼" {
-		if err := downloadMoYuImageAndReply(msg); err != nil {
+	// 处理特殊关键字和回复
+	handleSpecialKeywords(msg)
+
+	// 处理抖音链接
+	handleDouYinLink(msg)
+}
+
+// 处理特殊关键词和回复
+func handleSpecialKeywords(msg *openwechat.Message) {
+	switch {
+	case msg.IsTickledMe() || msg.Content == "@铲车司机bot ":
+		msg.ReplyText("您好！我是铲车司机Bot，我可以为您提供以下功能：\n" +
+			"1. 回复 'ping' 获取 'pong' 响应。\n" +
+			"2. 回复 '摸鱼' 获取随机摸鱼图片。\n" +
+			"3. 回复 '@铲车司机bot 摸鱼日历' 获取摸鱼日历。\n" +
+			"4. 回复 '微博热搜' 或 '热搜' 获取微博热搜内容。\n",
+		)
+	case strings.Contains(msg.Content, "信念力"):
+		msg.ReplyText("信念力\n" +
+			"你知道是啥吗\n" +
+			"能一起把生活过好\n" +
+			"不是你想的都是钱堆出来的普通人哪有那么多钱")
+	case strings.Contains(msg.Content, "劝人"):
+		msg.ReplyText("劝人就5分钟。5分钟没说动的事，就不再劝了。而是应该想想，捆住他手脚的是什么。是什么把他压在那里，让他没办法往前走。\n所以，我看到有人在一个没啥前途的公司岗位上待着不辞职不转行，在一段没有爱的关系里呆着被折磨，而不离开，不是对方对她好，有承诺，而是对方抓住了她的恐惧。\n所以，知道道理，依然过不好这一生。")
+	case strings.Contains(msg.Content, "热搜"):
+		handleGetWeiBoHotList(msg)
+	case strings.Contains(msg.Content, "摸鱼"):
+		downloadMoYuImageAndReply(msg, "./image/moyu.png")
+	case strings.Contains(msg.Content, "色图"):
+		handleGroupChatImage(msg)
+	case strings.Contains(msg.Content, "轩子"):
+		handleGroupChatXuanZiImgae(msg)
+	case strings.Contains(msg.Content, "简报"):
+		downloadNewsImageAndReply(msg)
+	case strings.Contains(msg.Content, "电动车"):
+		msg.ReplyText("妈的, 在西安花4000买个电动车")
+	case strings.Contains(msg.Content, "天气"):
+		// 请输入城市和区域信息 例如：回复 "西安 雁塔" 获取西安雁塔区的天气信息
+		msg.ReplyText("请输入城市和区域信息例如: " + "\n" +
+			"回复 \"!西安 雁塔\" 获取西安雁塔区的实时天气信息")
+	case strings.HasPrefix(msg.Content, "!"):
+		handleCityWeatherRequest(msg)
+	}
+
+}
+
+// 处理DouYin链接
+func handleDouYinLink(msg *openwechat.Message) {
+	if strings.Contains(msg.Content, "douyin.com") {
+
+		// 获取DouYinVideoUrl
+		douYinVideoUrl, err := getDouYinVideoUrl(msg.Content)
+		fmt.Println("douYinVideoUrl", douYinVideoUrl)
+		fmt.Println("msg", msg.Content)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+		}
+		// 下载视频到本地download文件
+		if err := downloadDouYinVideo(douYinVideoUrl, msg); err != nil {
 			fmt.Println("Error:", err)
 		}
 	}
-	// 检查消息是否来自群聊
-	if msg.IsSendByGroup() {
-		fmt.Println(msg.MsgId, msg.Content)
-
-		if msg.IsTickledMe() || msg.Content == "@铲车司机bot " {
-			msg.ReplyText("您好！我是铲车司机Bot，我可以为您提供以下功能：\n" +
-				"1. 回复 'ping' 获取 'pong' 响应。\n" +
-				"2. 回复 '摸鱼' 获取随机摸鱼图片。\n" +
-				"3. 回复 '@铲车司机bot 摸鱼日历' 获取摸鱼日历。\n" +
-				"4. 回复 '随机' 获取随机图片。\n" +
-				"5. 回复 '轩子' 获取轩子图片。\n" +
-				"6. 回复 '微博热搜' 或 '热搜' 获取微博热搜内容。\n" +
-				"7. 回复 '简报' 获取最新简报图片。\n" +
-				// 在这里添加其他功能的介绍
-				// 例如："8. 回复 '其他功能关键词' 获取其他功能介绍。\n"+
-				"请随时使用这些关键词与我互动，我将尽力为您提供帮助！")
-		}
-
-		if strings.Contains(msg.Content, "信念力") {
-			msg.ReplyText("信念力\n" +
-				"你知道是啥吗\n" +
-				"能一起把生活过好\n" +
-				"不是你想的都是钱堆出来的普通人哪有那么多钱")
-		}
-
-		//如果消息是以@铲车司机bot  开头的
-		// 如果消息是包含douyin.com的链接
-		if strings.Contains(msg.Content, "douyin.com") {
-			fmt.Println("msg", msg)
-			// 去除前缀留下后面的内容
-			msgVideoUrl := strings.TrimPrefix(msg.Content, "@铲车司机bot ")
-
-			fmt.Println("msgVideoUrl", msgVideoUrl)
-
-			// 获取videoUrl
-			video, err := getDouYinVideoUrl(msgVideoUrl)
-			fmt.Println("video", video)
-
-			if err != nil {
-				fmt.Println("Error:", err)
-			}
-			// 下载视频到本地download文件
-			if err := downloadDouYinVideo(video, msg); err != nil {
-				fmt.Println("Error:", err)
-			}
-		}
-		if strings.Contains(msg.Content, "劝人") {
-			msg.ReplyText("劝人就5分钟。5分钟没说动的事，就不再劝了。而是应该想想，捆住他手脚的是什么。是什么把他压在那里，让他没办法往前走。\n所以，我看到有人在一个没啥前途的公司岗位上待着不辞职不转行，在一段没有爱的关系里呆着被折磨，而不离开，不是对方对她好，有承诺，而是对方抓住了她的恐惧。\n所以，知道道理，依然过不好这一生。")
-		}
-		// 如果是群聊消息，检查消息内容是否为 "@铲车司机bot 摸鱼日历"
-		if msg.Content == "@铲车司机bot 摸鱼日历" {
-			// 如果消息内容匹配，触发处理函数
-			HandleGroupChatMessage(msg)
-		}
-
-		if msg.Content == "随机" || strings.Contains(msg.Content, "色图") {
-			handleGroupChatImage(msg)
-		}
-
-		if msg.Content == "轩子" {
-			handleGroupChatXuanZiImgae(msg)
-		}
-
-		if msg.Content == "微博热搜" || msg.Content == "热搜" {
-			handleGetWeiBoHotList(msg)
-		}
-
-		if msg.Content == "简报" {
-			downloadNewsImageAndReply(msg)
-		}
-
-		if strings.Contains(msg.Content, "电动车") {
-			msg.ReplyText("妈的, 在西安花4000买个电动车")
-		}
-
-		if strings.Contains(msg.Content, "天气") {
-			// 请输入城市和区域信息 例如：回复 "西安 雁塔" 获取西安雁塔区的天气信息
-			msg.ReplyText("请输入城市和区域信息例如: " + "\n" +
-				"回复 \"!西安 雁塔\" 获取西安雁塔区的实时天气信息")
-		}
-
-		if strings.HasPrefix(msg.Content, "!") {
-			parts := strings.Split(msg.Content, " ")
-			// 去除感叹号前缀
-			if len(parts) > 0 && strings.HasPrefix(parts[0], "!") {
-				parts[0] = strings.TrimPrefix(parts[0], "!")
-			}
-			if len(parts) < 2 {
-				cityList, _ := getCityList(parts[0])
-				replyMessage := "输入有误,请输入! " + parts[0] + "然后加上以下城市信息例如：\n"
-				for i, cityInfo := range cityList {
-					replyMessage += "!" + parts[0] + " " + cityInfo.Name
-					// 如果不是最后一个城市信息，则添加换行符
-					if i < len(cityList)-1 {
-						replyMessage += "\n"
-					}
-				}
-				msg.ReplyText(replyMessage)
-				return
-			}
-			// 传入城市信息和区域信息
-			locationId, err := getCityInfo(parts[0], parts[1])
-			if err != nil {
-				return
-			}
-
-			if err != nil {
-				msg.ReplyText("请输入正确的城市和区域信息")
-				return
-			}
-			weatherInfo, _ := getWeather(locationId)
-			// 长安区的当天天气信息
-			msg.ReplyText(parts[1] + "的天气: " + "\n" +
-				"实时天气: " + weatherInfo.Text + "\n" +
-				"实时温度: " + weatherInfo.Temp + "℃")
-		}
-	}
 }
-
-func downloadMoYuImageAndReply(msg *openwechat.Message) error {
-
+func downloadMoYuImageAndReply(msg *openwechat.Message, filePath string) error {
 	imgUrl, err := getMoyuImageURL()
+
 	if err != nil {
 		return err
 	}
@@ -198,7 +135,7 @@ func downloadMoYuImageAndReply(msg *openwechat.Message) error {
 	defer imgResponse.Body.Close()
 
 	// 创建本地文件保存
-	imgFile, err := os.Create("./image/moyu.png")
+	imgFile, err := os.Create(filePath)
 
 	if err != nil {
 		return err
@@ -213,7 +150,8 @@ func downloadMoYuImageAndReply(msg *openwechat.Message) error {
 		return nil
 	}
 
-	img, err := os.Open("./image/moyu.png")
+	// 直接回复用户
+	img, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
@@ -247,14 +185,6 @@ func getMoyuImageURL() (string, error) {
 	}
 
 	return moyuResp.URL, nil
-}
-
-// HandleGroupChatMessage 处理群聊消息
-func HandleGroupChatMessage(msg *openwechat.Message) {
-	// 在这里编写处理群聊消息的代码
-	if err := downloadMoYuImageAndReply(msg); err != nil {
-		fmt.Println("Error:", err)
-	}
 }
 
 // 发送图片
@@ -297,8 +227,6 @@ func handleGroupChatImage(msg *openwechat.Message) {
 		fmt.Println("Error sending image:", err)
 		return
 	}
-
-	//fmt.Println("Sending image:", selectedImagePath)
 
 }
 
@@ -343,51 +271,6 @@ func handleGroupChatXuanZiImgae(msg *openwechat.Message) {
 		return
 	}
 
-	//fmt.Println("Sending image:", selectedImagePath)
-
-}
-
-func handleGroupChatTenImage(msg *openwechat.Message, numberOfImages int) {
-	// 指定本地图片文件夹的路径
-	imageDir := "totalImage" // "image" 是您的图片文件夹的相对路径
-
-	// 读取图片文件列表
-	imageFiles, err := ioutil.ReadDir(imageDir)
-	if err != nil {
-		fmt.Println("Error reading image directory:", err)
-		return
-	}
-
-	// 创建一个存储图片文件路径的切片
-	imagePaths := []string{}
-
-	// 遍历图片文件列表，将图片文件的路径添加到切片中
-	for _, fileInfo := range imageFiles {
-		if !fileInfo.IsDir() {
-			imagePaths = append(imagePaths, filepath.Join(imageDir, fileInfo.Name()))
-		}
-	}
-
-	// 随机选择并发送指定数量的图片
-	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < numberOfImages; i++ {
-		randomIndex := rand.Intn(len(imagePaths))
-		selectedImagePath := imagePaths[randomIndex]
-
-		fmt.Println("selectedImagePath", selectedImagePath)
-		file, err := os.Open(selectedImagePath)
-		if err != nil {
-			fmt.Println("Error opening image file:", err)
-			return
-		}
-		defer file.Close()
-
-		_, err = msg.ReplyImage(file)
-		if err != nil {
-			fmt.Println("Error sending image:", err)
-			return
-		}
-	}
 }
 
 type WeiboHotList struct {
@@ -517,7 +400,7 @@ func downloadNewsImageAndReply(msg *openwechat.Message) error {
 	return nil
 }
 
-// 获取实时天气接口 https://devapi.qweather.com.qweather.com/v7/weather/now?
+// WeatherNow 获取实时天气接口 https://devapi.qweather.com.qweather.com/v7/weather/now?
 // key=62a43a5bf3944068978fd939241d2dba
 // location必填
 type WeatherNow struct {
@@ -552,6 +435,45 @@ func getWeather(locationId string) (WeatherNow, error) {
 	}
 
 	return weatherInfo.Now, err
+}
+
+func handleCityWeatherRequest(msg *openwechat.Message) {
+
+	if strings.HasPrefix(msg.Content, "!") {
+		parts := strings.Split(msg.Content, " ")
+		// 去除感叹号前缀
+		if len(parts) > 0 && strings.HasPrefix(parts[0], "!") {
+			parts[0] = strings.TrimPrefix(parts[0], "!")
+		}
+		if len(parts) < 2 {
+			cityList, _ := getCityList(parts[0])
+			replyMessage := "输入有误,请输入! " + parts[0] + "然后加上以下城市信息例如：\n"
+			for i, cityInfo := range cityList {
+				replyMessage += "!" + parts[0] + " " + cityInfo.Name
+				// 如果不是最后一个城市信息，则添加换行符
+				if i < len(cityList)-1 {
+					replyMessage += "\n"
+				}
+			}
+			msg.ReplyText(replyMessage)
+			return
+		}
+		// 传入城市信息和区域信息
+		locationId, err := getCityInfo(parts[0], parts[1])
+		if err != nil {
+			return
+		}
+
+		if err != nil {
+			msg.ReplyText("请输入正确的城市和区域信息")
+			return
+		}
+		weatherInfo, _ := getWeather(locationId)
+		// 长安区的当天天气信息
+		msg.ReplyText(parts[1] + "的天气: " + "\n" +
+			"实时天气: " + weatherInfo.Text + "\n" +
+			"实时温度: " + weatherInfo.Temp + "℃")
+	}
 }
 
 type CityInfo struct {
@@ -651,7 +573,6 @@ func getDouYinVideoUrl(videoUrl string) (string, error) {
 	fmt.Println("baseUrl", baseUrl)
 
 	resp, err := http.Get(baseUrl)
-	fmt.Println("http://localhost:8000/download?url="+videoUrl+"&prefix=False&watermark=False", "?????")
 
 	if err != nil {
 		return "", err
