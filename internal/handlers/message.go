@@ -30,6 +30,11 @@ func HandleGroupMessage(msg *openwechat.Message) {
 			services.HandleStockQuery(msg)
 		}
 	}
+
+	// 处理大盘查询
+	if strings.Contains(msg.Content, "牛来了") {
+		services.HandleMarketOverview(msg)
+	}
 }
 
 func handleSpecialKeywords(msg *openwechat.Message) {

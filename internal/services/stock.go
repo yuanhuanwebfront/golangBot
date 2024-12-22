@@ -165,3 +165,53 @@ func isNumeric(s string) bool {
 	}
 	return true
 }
+
+// HandleMarketOverview 处理大盘行情查询
+func HandleMarketOverview(msg *openwechat.Message) {
+	// 获取三大指数数据
+	sh, err := getStockData("sh000001") // 上证指数
+	if err != nil {
+		msg.ReplyText("获取上证指数失败")
+		return
+	}
+
+	sz, err := getStockData("sz399001") // 深证成指
+	if err != nil {
+		msg.ReplyText("获取深证成指失败")
+		return
+	}
+
+	cyb, err := getStockData("sz399006") // 创业板指
+	if err != nil {
+		msg.ReplyText("获取创业板指失败")
+		return
+	}
+
+	// 构造回复消息
+	reply := formatMarketOverview(sh, sz, cyb)
+	msg.ReplyText(reply)
+}
+
+// formatMarketOverview 格式化大盘概览消息
+func formatMarketOverview(sh, sz, cyb *models.StockData) string {
+	// 获取整体趋势图标
+	var overallTrend string
+	if sh.Change > 0 && sz.Change > 0 && cyb.Change > 0 {
+		overallTrend = "🔥 大盘全线上涨"
+	} else if sh.Change < 0 && sz.Change < 0 && cyb.Change < 0 {
+		overallTrend = "💧 大盘全线下跌"
+	} else {
+		overallTrend = "📊 大盘涨跌互现"
+	}
+
+	return fmt.Sprintf("%s\n\n"+
+		"上证指数：%.2f (%+.2f%%)\n"+
+		"深证成指：%.2f (%+.2f%%)\n"+
+		"创业板指：%.2f (%+.2f%%)\n\n"+
+		"更新时间：%s",
+		overallTrend,
+		sh.Price, sh.ChangePct,
+		sz.Price, sz.ChangePct,
+		cyb.Price, cyb.ChangePct,
+		time.Now().Format("15:04:05"))
+}
