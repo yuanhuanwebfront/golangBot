@@ -31,8 +31,8 @@ func HandleGroupMessage(msg *openwechat.Message) {
 		}
 	}
 
-	// 处理大盘查询
-	if strings.Contains(msg.Content, "牛来了") {
+	// 处理大盘查询，当输入牛来了，或者牛跑了，或者牛回速归，则发送大盘概览
+	if strings.Contains(msg.Content, "牛来了") || strings.Contains(msg.Content, "牛跑了") || strings.Contains(msg.Content, "牛回速归") {
 		services.HandleMarketOverview(msg)
 	}
 }
