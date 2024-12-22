@@ -143,14 +143,21 @@ func extractStockCode(content string) string {
 			return part
 		}
 
-		// 如果是6位数字，自动判断添加前缀
+		// 如果是6位数字，判断添加前缀
 		if len(part) == 6 && isNumeric(part) {
-			// 60,68,30开头的是上证，其他是深证
+			firstThree := part[:3]
 			firstTwo := part[:2]
-			if firstTwo == "60" || firstTwo == "68" || firstTwo == "30" {
+
+			// ETF基金规则
+			if firstThree == "510" || firstThree == "511" || firstThree == "513" || firstThree == "515" || firstThree == "518" {
 				return "sh" + part
 			}
-			return "sz" + part
+
+			// 股票规则
+			if firstTwo == "60" || firstTwo == "68" {
+				return "sh" + part
+			}
+			return "sz" + part // 包括创业板(30开头)和其他深市股票
 		}
 	}
 	return ""
