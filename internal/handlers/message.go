@@ -19,4 +19,23 @@ func HandleGroupMessage(msg *openwechat.Message) {
 	if strings.Contains(msg.Content, "过年") {
 		services.HandleNewYearCountdown(msg)
 	}
+
+	// 处理股票查询，格式：股票600519
+	if strings.HasPrefix(msg.Content, "股票") {
+		// 去掉"股票"二字，保留后面的代码部分
+		code := strings.TrimPrefix(msg.Content, "股票")
+		code = strings.TrimSpace(code) // 去掉可能的空格
+		if code != "" {
+			msg.Content = code // 设置消息内容为纯代码
+			services.HandleStockQuery(msg)
+		}
+	}
+}
+
+func handleSpecialKeywords(msg *openwechat.Message) {
+	switch {
+	// ... 其他 case
+	case strings.Contains(msg.Content, "股票"):
+		services.HandleStockQuery(msg)
+	}
 }

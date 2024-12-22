@@ -1,0 +1,167 @@
+package services
+
+import (
+	"fmt"
+	"github.com/eatmoreapple/openwechat"
+	"github.com/luckfunc/golangBot/internal/models"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// HandleStockQuery 处理股票查询
+func HandleStockQuery(msg *openwechat.Message) {
+	// 从消息中提取股票代码
+	code := extractStockCode(msg.Content)
+	if code == "" {
+		msg.ReplyText("请输入正确的股票代码，例如：\n" +
+			"1. 直接输入代码：600519 或 000001\n" +
+			"2. 带前缀代码：sh600519 或 sz000001")
+		return
+	}
+
+	// 获取股票数据
+	stock, err := getStockData(code)
+	if err != nil {
+		msg.ReplyText(fmt.Sprintf("获取股票数据失败: %v", err))
+		return
+	}
+
+	// 构造回复消息
+	reply := formatStockMessage(stock)
+	msg.ReplyText(reply)
+}
+
+// 从新浪财经API获取股票数据
+func getStockData(code string) (*models.StockData, error) {
+	url := fmt.Sprintf("http://hq.sinajs.cn/list=%s", code)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// 设置请求头，模拟浏览器访问
+	req.Header.Set("Referer", "https://finance.sina.com.cn")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// 将 GBK 编码转换为 UTF-8
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	utf8Body, err := decoder.Bytes(body)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseStockData(string(utf8Body), code)
+}
+
+// 解析股票数据
+func parseStockData(data string, code string) (*models.StockData, error) {
+	parts := strings.Split(data, "\"")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid stock data")
+	}
+
+	values := strings.Split(parts[1], ",")
+	if len(values) < 32 {
+		return nil, fmt.Errorf("insufficient stock data")
+	}
+
+	// 清理股票名称中的 XD 标记
+	stockName := strings.ReplaceAll(values[0], "XD", "")
+	stockName = strings.TrimSpace(stockName)
+
+	// 解析价格数据
+	currentPrice, _ := strconv.ParseFloat(values[3], 64)
+	yesterdayClose, _ := strconv.ParseFloat(values[2], 64)
+	high, _ := strconv.ParseFloat(values[4], 64)
+	low, _ := strconv.ParseFloat(values[5], 64)
+
+	// 计算涨跌
+	change := currentPrice - yesterdayClose
+	changePct := change / yesterdayClose * 100
+
+	return &models.StockData{
+		Name:      stockName, // 使用清理后的名称
+		Code:      code,
+		Price:     currentPrice,
+		Change:    change,
+		ChangePct: changePct,
+		High:      high,
+		Low:       low,
+	}, nil
+}
+
+// 格式化股票消息
+func formatStockMessage(stock *models.StockData) string {
+	// 根据涨跌选择不同的emoji
+	var trend string
+	if stock.Change > 0 {
+		trend = "📈"
+	} else if stock.Change < 0 {
+		trend = "📉"
+	} else {
+		trend = "➖"
+	}
+
+	return fmt.Sprintf("%s %s (%s)\n"+
+		"当前价：%.2f\n"+
+		"涨跌额：%.2f\n"+
+		"涨跌幅：%.2f%%\n"+
+		"最高价：%.2f\n"+
+		"最低价：%.2f\n"+
+		"更新时间：%s",
+		trend, stock.Name, stock.Code,
+		stock.Price,
+		stock.Change,
+		stock.ChangePct,
+		stock.High,
+		stock.Low,
+		time.Now().Format("15:04:05"))
+}
+
+// 从消息中提取股票代码
+func extractStockCode(content string) string {
+	parts := strings.Fields(content)
+	for _, part := range parts {
+		// 如果直接输入 sh/sz 开头的代码
+		if strings.HasPrefix(part, "sh") || strings.HasPrefix(part, "sz") {
+			return part
+		}
+
+		// 如果是6位数字，自动判断添加前缀
+		if len(part) == 6 && isNumeric(part) {
+			// 60,68,30开头的是上证，其他是深证
+			firstTwo := part[:2]
+			if firstTwo == "60" || firstTwo == "68" || firstTwo == "30" {
+				return "sh" + part
+			}
+			return "sz" + part
+		}
+	}
+	return ""
+}
+
+// 判断字符串是否为数字
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
