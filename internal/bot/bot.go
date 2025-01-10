@@ -6,15 +6,33 @@ import (
 	"github.com/luckfunc/golangBot/internal/handlers"
 )
 
+func performHotLogin(bot *openwechat.Bot, reloadStorage openwechat.HotReloadStorage) error {
+	if err := bot.HotLogin(reloadStorage, openwechat.NewRetryLoginOption()); err != nil {
+		return err
+	}
+	self, err := bot.GetCurrentUser()
+	if err != nil {
+		return err
+	}
+	groups, err := self.Groups()
+	fmt.Println(groups, err)
+	return nil
+}
+
 func Run() error {
 	bot := openwechat.DefaultBot(openwechat.Desktop)
 
 	// Register QR code callback
 	bot.UUIDCallback = openwechat.PrintlnQrcodeUrl
 
-	// 直接登录，不使用热登录
-	if err := bot.Login(); err != nil {
-		return fmt.Errorf("login failed: %v", err)
+	// Create hot reload storage object
+	reloadStorage := openwechat.NewFileHotReloadStorage("storage.json")
+	defer reloadStorage.Close()
+
+	// Perform hot login
+	if err := performHotLogin(bot, reloadStorage); err != nil {
+		fmt.Println(err)
+		return nil
 	}
 
 	// Handle group messages
