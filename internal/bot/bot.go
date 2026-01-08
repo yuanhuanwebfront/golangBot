@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/eatmoreapple/openwechat"
 	"github.com/luckfunc/golangBot/internal/handlers"
+	"github.com/luckfunc/golangBot/internal/services"
 )
 
 func performHotLogin(bot *openwechat.Bot, reloadStorage openwechat.HotReloadStorage) error {
@@ -37,6 +38,8 @@ func Run() error {
 
 	// Handle group messages
 	bot.MessageHandler = handlers.HandleGroupMessage
+	services.StartDailyWatchlistPush(bot)
+	services.StartIntervalWatchlistPush(bot)
 
 	// Block until exit
 	bot.Block()

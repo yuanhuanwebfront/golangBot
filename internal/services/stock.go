@@ -97,7 +97,7 @@ func parseStockData(data string, code string) (*models.StockData, error) {
 	// 计算涨跌
 	change := currentPrice - yesterdayClose
 	changePct := change / yesterdayClose * 100
-
+	// System/Library/Fonts/PingFang.ttc
 	return &models.StockData{
 		Name:      stockName, // 使用清理后的名称
 		Code:      code,

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "groups": {
+    "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21": {
+      "group_id": "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21",
+      "group_name": "2",
+      "stocks": [
+        "sh512400",
+        "sz002241",
+        "sh600171",
+        "sh600460",
+        "sh513130",
+        "sh601162",
+        "sh688981",
+        "sh601398",
+        "sh513100",
+        "sh513500"
+      ],
+      "subscribed": false,
+      "stock_intervals": {},
+      "updated_at": "2026-01-08T23:23:01+08:00"
+    }
+  }
+}
