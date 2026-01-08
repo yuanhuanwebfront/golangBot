@@ -27,6 +27,11 @@ var lastPushDate = make(map[string]string)
 var intervalPushMu sync.Mutex
 var lastIntervalPush = make(map[string]time.Time)
 
+type indexSnapshot struct {
+	Name  string
+	Stock *models.StockData
+}
+
 // HandleStockCommand handles stock-related commands.
 func HandleStockCommand(msg *openwechat.Message) {
 	content := strings.TrimSpace(msg.Content)
@@ -154,7 +159,7 @@ func StartIntervalWatchlistPush(bot *openwechat.Bot) {
 					}
 					title := fmt.Sprintf("股票定时提醒（%d分钟）", minutes)
 					indices := fetchMarketIndexSnapshots()
-					image, err := renderWatchlistImage(title, indices, []*models.StockData{stock}, now.Format("15:04:05"))
+					image, err := renderWatchlistHTMLImage(title, indices, []*models.StockData{stock}, now.Format("15:04:05"))
 					if err == nil {
 						_, _ = target.First().SendImage(bytes.NewReader(image))
 					} else {
@@ -689,7 +694,7 @@ func buildWatchlistOverviewImage(codes []string, groupName, title string) ([]byt
 	indices := fetchMarketIndexSnapshots()
 	head := "自选行情"
 	fullTitle := fmt.Sprintf("%s（%s）", head, title)
-	return renderWatchlistImage(fullTitle, indices, stocks, time.Now().Format("15:04:05"))
+	return renderWatchlistHTMLImage(fullTitle, indices, stocks, time.Now().Format("15:04:05"))
 }
 
 func fetchStocksByCodes(codes []string) []*models.StockData {

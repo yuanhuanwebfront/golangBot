@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "groups": {
     "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21": {
       "group_id": "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21",
@@ -14,11 +14,13 @@
         "sh688981",
         "sh601398",
         "sh513100",
-        "sh513500"
+        "sh513500",
+        "sh588080"
       ],
       "subscribed": false,
       "stock_intervals": {},
-      "updated_at": "2026-01-08T23:23:01+08:00"
+      "enabled": true,
+      "updated_at": "2026-01-09T00:35:11+08:00"
     }
   }
 }
