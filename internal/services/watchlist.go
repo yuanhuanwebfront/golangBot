@@ -466,6 +466,8 @@ func resolveGroupInfo(msg *openwechat.Message) (string, string) {
 		return "", ""
 	}
 	groupID := msg.FromUserName
+	// groupID
+	fmt.Println("groupID=", groupID)
 	groupName := ""
 	group, err := msg.Receiver()
 	if err == nil && group != nil {
