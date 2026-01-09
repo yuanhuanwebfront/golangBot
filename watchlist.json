@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "groups": {
     "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21": {
       "group_id": "@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21",
@@ -10,17 +10,49 @@
         "sh600171",
         "sh600460",
         "sh513130",
-        "sh601162",
-        "sh688981",
-        "sh601398",
         "sh513100",
         "sh513500",
-        "sh588080"
+        "sh588080",
+        "sz002050",
+        "sz001979"
       ],
       "subscribed": false,
       "stock_intervals": {},
       "enabled": true,
-      "updated_at": "2026-01-09T00:35:11+08:00"
+      "default_limit": 5,
+      "window_minutes": 10,
+      "user_limits": {},
+      "updated_at": "2026-01-09T09:31:18+08:00"
+    },
+    "@@c5cafdcc073de9c2212da64496cd32530c105738a6dee5e1f39163f58b749bc9": {
+      "group_id": "@@c5cafdcc073de9c2212da64496cd32530c105738a6dee5e1f39163f58b749bc9",
+      "group_name": "2",
+      "stocks": [
+        "sz002241",
+        "sh600460",
+        "sh513130",
+        "sh688981",
+        "sh513100",
+        "sh513500",
+        "sz002123",
+        "sz300433",
+        "sh601698",
+        "sh600498",
+        "sh512400",
+        "sz002146",
+        "sh600118",
+        "sz002149",
+        "sz301171",
+        "sz300229",
+        "sh600089"
+      ],
+      "subscribed": false,
+      "stock_intervals": {},
+      "enabled": true,
+      "default_limit": 5,
+      "window_minutes": 10,
+      "user_limits": {},
+      "updated_at": "2026-01-09T13:33:30+08:00"
     }
   }
 }

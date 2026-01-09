@@ -206,7 +206,7 @@ const watchlistHTMLTemplate = `<!DOCTYPE html>
     .table tbody tr:nth-child(even) td {
       background: #fbfbfb;
     }
-    .num { text-align: right; }
+    .num { text-align: left; font-variant-numeric: tabular-nums; }
     .up { color: var(--up); }
     .down { color: var(--down); }
     .flat { color: var(--flat); }

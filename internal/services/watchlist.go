@@ -20,21 +20,35 @@ import (
 
 const watchlistFileName = "watchlist.json"
 const dailyPushTime = "15:05"
+const defaultRateLimit = 5
+const defaultRateWindowMinutes = 10
 
 var watchlistMu sync.Mutex
 var lastPushDateMu sync.Mutex
 var lastPushDate = make(map[string]string)
 var intervalPushMu sync.Mutex
 var lastIntervalPush = make(map[string]time.Time)
+var rateLimitMu sync.Mutex
+var rateLimitHits = make(map[string][]time.Time)
 
 type indexSnapshot struct {
 	Name  string
 	Stock *models.StockData
 }
 
+var superAdmins = map[string]bool{
+	"@6e42664c6cfdd5f4c15c2ba6051e897306e9ecf6ba61adddbcb0462cbf93cb53": true,
+}
+
 // HandleStockCommand handles stock-related commands.
 func HandleStockCommand(msg *openwechat.Message) {
 	content := strings.TrimSpace(msg.Content)
+	if shouldEnforceRateLimit(content) {
+		allowed, err := allowStockRequest(msg)
+		if err == nil && !allowed {
+			return
+		}
+	}
 	switch {
 	case strings.HasPrefix(content, "股票添加"):
 		handleWatchlistAdd(msg, strings.TrimSpace(strings.TrimPrefix(content, "股票添加")))
@@ -60,6 +74,10 @@ func HandleStockCommand(msg *openwechat.Message) {
 		handleWatchlistIntervalList(msg)
 	case strings.HasPrefix(content, "股票定时"):
 		handleWatchlistIntervalSet(msg, strings.TrimSpace(strings.TrimPrefix(content, "股票定时")))
+	case strings.HasPrefix(content, "股票身份"):
+		handleStockIdentity(msg)
+	case strings.HasPrefix(content, "股票限额"):
+		handleStockLimit(msg, strings.TrimSpace(strings.TrimPrefix(content, "股票限额")))
 	case strings.HasPrefix(content, "股票帮助"):
 		replyStockHelp(msg)
 	default:
@@ -383,6 +401,33 @@ func handleWatchlistIntervalList(msg *openwechat.Message) {
 	msg.ReplyText("定时列表：\n" + strings.Join(lines, "\n"))
 }
 
+func handleStockIdentity(msg *openwechat.Message) {
+	var userName, nickName, displayName, remarkName string
+	if msg.IsSendByGroup() {
+		member, err := msg.SenderInGroup()
+		if err == nil && member != nil {
+			userName = member.UserName
+			nickName = member.NickName
+			displayName = member.DisplayName
+			remarkName = member.RemarkName
+		}
+	} else {
+		sender, err := msg.Sender()
+		if err == nil && sender != nil {
+			userName = sender.UserName
+			nickName = sender.NickName
+			displayName = sender.DisplayName
+			remarkName = sender.RemarkName
+		}
+	}
+	if userName == "" && nickName == "" && displayName == "" && remarkName == "" {
+		msg.ReplyText("获取身份失败，请稍后再试")
+		return
+	}
+	msg.ReplyText(fmt.Sprintf("你的身份信息：\nUserName：%s\n群昵称：%s\n微信昵称：%s\n备注名：%s",
+		userName, displayName, nickName, remarkName))
+}
+
 func replyStockHelp(msg *openwechat.Message) {
 	msg.ReplyText("股票功能：\n" +
 		"1) 查询：股票600519 / 股票 sh600519\n" +
@@ -393,7 +438,9 @@ func replyStockHelp(msg *openwechat.Message) {
 		"6) 订阅：股票订阅 / 股票取消订阅\n" +
 		"7) 定时：股票定时 600519 30\n" +
 		"8) 定时列表：股票定时列表\n" +
-		"9) 推送开关：股票开启 / 股票关闭")
+		"9) 推送开关：股票开启 / 股票关闭\n" +
+		"10) 身份：股票身份\n" +
+		"11) 限额：股票限额")
 }
 
 // HandleStockHelp replies stock help content.
@@ -582,11 +629,23 @@ func ensureGroupWatchlist(store *models.WatchlistStore, groupID, groupName strin
 			Stocks:         []string{},
 			StockIntervals: make(map[string]int),
 			Enabled:        true,
+			DefaultLimit:   defaultRateLimit,
+			WindowMinutes:  defaultRateWindowMinutes,
+			UserLimits:     make(map[string]int),
 		}
 		store.Groups[groupID] = group
 	}
 	if group.StockIntervals == nil {
 		group.StockIntervals = make(map[string]int)
+	}
+	if group.UserLimits == nil {
+		group.UserLimits = make(map[string]int)
+	}
+	if group.DefaultLimit == 0 {
+		group.DefaultLimit = defaultRateLimit
+	}
+	if group.WindowMinutes == 0 {
+		group.WindowMinutes = defaultRateWindowMinutes
 	}
 	if groupName != "" && group.GroupName != groupName {
 		group.GroupName = groupName
@@ -600,7 +659,7 @@ func loadWatchlistStore() (*models.WatchlistStore, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &models.WatchlistStore{
-				Version: 2,
+				Version: 3,
 				Groups:  make(map[string]*models.GroupWatchlist),
 			}, nil
 		}
@@ -621,6 +680,20 @@ func loadWatchlistStore() (*models.WatchlistStore, error) {
 			group.Enabled = true
 		}
 		store.Version = 2
+	}
+	if store.Version < 3 {
+		for _, group := range store.Groups {
+			if group.DefaultLimit == 0 {
+				group.DefaultLimit = defaultRateLimit
+			}
+			if group.WindowMinutes == 0 {
+				group.WindowMinutes = defaultRateWindowMinutes
+			}
+			if group.UserLimits == nil {
+				group.UserLimits = make(map[string]int)
+			}
+		}
+		store.Version = 3
 	}
 	return &store, nil
 }
@@ -759,6 +832,263 @@ func formatMarketIndexSummary() string {
 		sh.Price, sh.ChangePct,
 		sz.Price, sz.ChangePct,
 		cyb.Price, cyb.ChangePct)
+}
+
+func shouldEnforceRateLimit(content string) bool {
+	if strings.HasPrefix(content, "股票身份") || strings.HasPrefix(content, "股票帮助") || strings.HasPrefix(content, "股票限额") {
+		return false
+	}
+	return true
+}
+
+func allowStockRequest(msg *openwechat.Message) (bool, error) {
+	if !msg.IsSendByGroup() {
+		return true, nil
+	}
+	groupID, _ := resolveGroupInfo(msg)
+	if groupID == "" {
+		return true, nil
+	}
+	userName := getSenderUserName(msg)
+	if userName == "" {
+		return true, nil
+	}
+	if superAdmins[userName] {
+		return true, nil
+	}
+	limit, windowMinutes, err := getRateLimitForUser(groupID, userName)
+	if err != nil {
+		return true, err
+	}
+	if limit <= 0 || windowMinutes <= 0 {
+		return true, nil
+	}
+	allowed := checkAndRecordRate(groupID, userName, limit, windowMinutes)
+	if allowed {
+		return true, nil
+	}
+	msg.ReplyText(fmt.Sprintf("触发限额：每 %d 分钟最多 %d 次，请稍后再试。", windowMinutes, limit))
+	return false, nil
+}
+
+func getRateLimitForUser(groupID, userName string) (int, int, error) {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		return 0, 0, err
+	}
+	group := store.Groups[groupID]
+	if group == nil {
+		return defaultRateLimit, defaultRateWindowMinutes, nil
+	}
+	limit := group.DefaultLimit
+	if group.UserLimits != nil {
+		if userLimit, ok := group.UserLimits[userName]; ok {
+			limit = userLimit
+		}
+	}
+	window := group.WindowMinutes
+	return limit, window, nil
+}
+
+func checkAndRecordRate(groupID, userName string, limit int, windowMinutes int) bool {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+	key := groupID + "|" + userName
+	now := time.Now()
+	window := time.Duration(windowMinutes) * time.Minute
+	hits := rateLimitHits[key]
+	var filtered []time.Time
+	for _, hit := range hits {
+		if now.Sub(hit) <= window {
+			filtered = append(filtered, hit)
+		}
+	}
+	if len(filtered) >= limit {
+		rateLimitHits[key] = filtered
+		return false
+	}
+	filtered = append(filtered, now)
+	rateLimitHits[key] = filtered
+	return true
+}
+
+func getSenderUserName(msg *openwechat.Message) string {
+	if msg.IsSendByGroup() {
+		member, err := msg.SenderInGroup()
+		if err == nil && member != nil {
+			return member.UserName
+		}
+	}
+	sender, err := msg.Sender()
+	if err == nil && sender != nil {
+		return sender.UserName
+	}
+	return ""
+}
+
+func handleStockLimit(msg *openwechat.Message, args string) {
+	if !msg.IsSendByGroup() {
+		msg.ReplyText("只支持在群聊中设置限额")
+		return
+	}
+	userName := getSenderUserName(msg)
+	if userName == "" || !superAdmins[userName] {
+		msg.ReplyText("仅超管可设置限额")
+		return
+	}
+	groupID, groupName := resolveGroupInfo(msg)
+	if groupID == "" {
+		msg.ReplyText("获取群信息失败")
+		return
+	}
+	args = strings.TrimSpace(args)
+	if args == "" {
+		replyLimitStatus(msg, groupID)
+		return
+	}
+	fields := strings.Fields(args)
+	if len(fields) == 1 {
+		replyLimitStatus(msg, groupID)
+		return
+	}
+	if len(fields) >= 2 && (fields[0] == "默认" || fields[0] == "default") {
+		value, err := strconv.Atoi(fields[1])
+		if err != nil || value < 0 {
+			msg.ReplyText("用法：股票限额 默认 5")
+			return
+		}
+		if err := setGroupDefaultLimit(groupID, groupName, value); err != nil {
+			msg.ReplyText(fmt.Sprintf("设置失败：%v", err))
+			return
+		}
+		msg.ReplyText(fmt.Sprintf("已设置默认限额：%d 次", value))
+		return
+	}
+	if len(fields) >= 2 && (fields[0] == "窗口" || fields[0] == "window") {
+		value, err := strconv.Atoi(fields[1])
+		if err != nil || value <= 0 {
+			msg.ReplyText("用法：股票限额 窗口 10")
+			return
+		}
+		if err := setGroupWindowMinutes(groupID, groupName, value); err != nil {
+			msg.ReplyText(fmt.Sprintf("设置失败：%v", err))
+			return
+		}
+		msg.ReplyText(fmt.Sprintf("已设置限额窗口：%d 分钟", value))
+		return
+	}
+	if len(fields) >= 2 && (fields[0] == "清除" || fields[0] == "remove") {
+		target := fields[1]
+		if err := clearUserLimit(groupID, groupName, target); err != nil {
+			msg.ReplyText(fmt.Sprintf("清除失败：%v", err))
+			return
+		}
+		msg.ReplyText(fmt.Sprintf("已清除 %s 的个人限额", target))
+		return
+	}
+	target := fields[0]
+	value, err := strconv.Atoi(fields[1])
+	if err != nil || value < 0 {
+		msg.ReplyText("用法：股票限额 UserName 5（0 为无限制）")
+		return
+	}
+	if err := setUserLimit(groupID, groupName, target, value); err != nil {
+		msg.ReplyText(fmt.Sprintf("设置失败：%v", err))
+		return
+	}
+	if value == 0 {
+		msg.ReplyText(fmt.Sprintf("已设置 %s 为无限制", target))
+		return
+	}
+	msg.ReplyText(fmt.Sprintf("已设置 %s 限额为 %d 次", target, value))
+}
+
+func replyLimitStatus(msg *openwechat.Message, groupID string) {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		msg.ReplyText(fmt.Sprintf("读取失败：%v", err))
+		return
+	}
+	group := store.Groups[groupID]
+	if group == nil {
+		msg.ReplyText("当前群未设置限额，使用默认配置")
+		return
+	}
+	lines := []string{
+		fmt.Sprintf("默认限额：%d 次 / %d 分钟", group.DefaultLimit, group.WindowMinutes),
+	}
+	if len(group.UserLimits) > 0 {
+		lines = append(lines, "个人限额：")
+		for user, limit := range group.UserLimits {
+			if limit == 0 {
+				lines = append(lines, fmt.Sprintf("- %s：无限制", user))
+			} else {
+				lines = append(lines, fmt.Sprintf("- %s：%d 次", user, limit))
+			}
+		}
+	}
+	msg.ReplyText(strings.Join(lines, "\n"))
+}
+
+func setGroupDefaultLimit(groupID, groupName string, limit int) error {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		return err
+	}
+	group := ensureGroupWatchlist(store, groupID, groupName)
+	group.DefaultLimit = limit
+	group.UpdatedAt = time.Now().Format(time.RFC3339)
+	return saveWatchlistStore(store)
+}
+
+func setGroupWindowMinutes(groupID, groupName string, minutes int) error {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		return err
+	}
+	group := ensureGroupWatchlist(store, groupID, groupName)
+	group.WindowMinutes = minutes
+	group.UpdatedAt = time.Now().Format(time.RFC3339)
+	return saveWatchlistStore(store)
+}
+
+func setUserLimit(groupID, groupName, userName string, limit int) error {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		return err
+	}
+	group := ensureGroupWatchlist(store, groupID, groupName)
+	if group.UserLimits == nil {
+		group.UserLimits = make(map[string]int)
+	}
+	group.UserLimits[userName] = limit
+	group.UpdatedAt = time.Now().Format(time.RFC3339)
+	return saveWatchlistStore(store)
+}
+
+func clearUserLimit(groupID, groupName, userName string) error {
+	watchlistMu.Lock()
+	defer watchlistMu.Unlock()
+	store, err := loadWatchlistStore()
+	if err != nil {
+		return err
+	}
+	group := ensureGroupWatchlist(store, groupID, groupName)
+	if group.UserLimits != nil {
+		delete(group.UserLimits, userName)
+	}
+	group.UpdatedAt = time.Now().Format(time.RFC3339)
+	return saveWatchlistStore(store)
 }
 
 func pushedToday(groupID string, now time.Time) bool {

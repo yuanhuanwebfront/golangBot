@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/eatmoreapple/openwechat"
 	"github.com/luckfunc/golangBot/internal/models"
@@ -34,6 +35,11 @@ func HandleStockQuery(msg *openwechat.Message) {
 	}
 
 	// 构造回复消息
+	image, err := buildSingleStockImage(stock)
+	if err == nil {
+		_, _ = msg.ReplyImage(bytes.NewReader(image))
+		return
+	}
 	reply := formatStockMessage(stock)
 	msg.ReplyText(reply)
 }
@@ -135,6 +141,12 @@ func formatStockMessage(stock *models.StockData) string {
 		stock.High,
 		stock.Low,
 		time.Now().Format("15:04:05"))
+}
+
+func buildSingleStockImage(stock *models.StockData) ([]byte, error) {
+	title := fmt.Sprintf("个股行情（%s）", stock.Name)
+	indices := fetchMarketIndexSnapshots()
+	return renderWatchlistHTMLImage(title, indices, []*models.StockData{stock}, time.Now().Format("15:04:05"))
 }
 
 // 从消息中提取股票代码

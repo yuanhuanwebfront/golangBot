@@ -14,5 +14,8 @@ type GroupWatchlist struct {
 	Subscribed     bool           `json:"subscribed"`
 	StockIntervals map[string]int `json:"stock_intervals"`
 	Enabled        bool           `json:"enabled"`
+	DefaultLimit   int            `json:"default_limit"`
+	WindowMinutes  int            `json:"window_minutes"`
+	UserLimits     map[string]int `json:"user_limits"`
 	UpdatedAt      string         `json:"updated_at"`
 }
