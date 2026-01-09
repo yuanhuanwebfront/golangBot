@@ -15,6 +15,9 @@ import (
 
 // HandleStockQuery 处理股票查询
 func HandleStockQuery(msg *openwechat.Message) {
+	if !shouldHandleStockInGroup(msg) {
+		return
+	}
 	// 去掉"股票"二字，保留后面的代码部分
 	content := strings.TrimPrefix(msg.Content, "股票")
 	content = strings.TrimSpace(content) // 去掉可能的空格

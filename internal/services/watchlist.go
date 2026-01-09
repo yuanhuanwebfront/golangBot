@@ -23,6 +23,10 @@ const dailyPushTime = "15:05"
 const defaultRateLimit = 5
 const defaultRateWindowMinutes = 10
 
+var allowedGroupIDs = []string{
+	"@@9c5f0bb6ac30929ac8b6394ee04970d0929f69de446a3b5eb4febabf15872b21",
+} // 仅允许这些群咨询股票，留空表示不限制
+
 var watchlistMu sync.Mutex
 var lastPushDateMu sync.Mutex
 var lastPushDate = make(map[string]string)
@@ -42,6 +46,9 @@ var superAdmins = map[string]bool{
 
 // HandleStockCommand handles stock-related commands.
 func HandleStockCommand(msg *openwechat.Message) {
+	if !shouldHandleStockInGroup(msg) {
+		return
+	}
 	content := strings.TrimSpace(msg.Content)
 	if shouldEnforceRateLimit(content) {
 		allowed, err := allowStockRequest(msg)
@@ -108,6 +115,9 @@ func StartDailyWatchlistPush(bot *openwechat.Bot) {
 				continue
 			}
 			for groupID, group := range store.Groups {
+				if !IsAllowedGroupID(groupID) {
+					continue
+				}
 				if !group.Enabled {
 					continue
 				}
@@ -154,6 +164,9 @@ func StartIntervalWatchlistPush(bot *openwechat.Bot) {
 			}
 			now := time.Now()
 			for groupID, group := range store.Groups {
+				if !IsAllowedGroupID(groupID) {
+					continue
+				}
 				if !group.Enabled {
 					continue
 				}
@@ -849,6 +862,10 @@ func allowStockRequest(msg *openwechat.Message) (bool, error) {
 	if groupID == "" {
 		return true, nil
 	}
+	// 只允许指定群聊咨询，其它群直接拦截（不回任何提示）
+	if !IsAllowedGroupID(groupID) {
+		return false, nil
+	}
 	userName := getSenderUserName(msg)
 	if userName == "" {
 		return true, nil
@@ -869,6 +886,39 @@ func allowStockRequest(msg *openwechat.Message) (bool, error) {
 	}
 	msg.ReplyText(fmt.Sprintf("触发限额：每 %d 分钟最多 %d 次，请稍后再试。", windowMinutes, limit))
 	return false, nil
+}
+
+// 仅允许指定群聊触发股票功能，避免在其它群或私聊产生任何响应
+func shouldHandleStockInGroup(msg *openwechat.Message) bool {
+	if len(allowedGroupIDs) == 0 {
+		return true
+	}
+	if !msg.IsSendByGroup() {
+		return false
+	}
+	groupID, _ := resolveGroupInfo(msg)
+	if groupID == "" {
+		return false
+	}
+	return IsAllowedGroupID(groupID)
+}
+
+// 供 handlers 使用的全局过滤入口
+func IsAllowedGroupMessage(msg *openwechat.Message) bool {
+	return shouldHandleStockInGroup(msg)
+}
+
+// 供 handlers/定时推送复用的统一群校验逻辑
+func IsAllowedGroupID(groupID string) bool {
+	if len(allowedGroupIDs) == 0 {
+		return true
+	}
+	for _, allowed := range allowedGroupIDs {
+		if groupID == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func getRateLimitForUser(groupID, userName string) (int, int, error) {

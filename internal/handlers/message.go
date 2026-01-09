@@ -10,6 +10,9 @@ func HandleGroupMessage(msg *openwechat.Message) {
 	if !msg.IsSendByGroup() {
 		return
 	}
+	if !services.IsAllowedGroupMessage(msg) {
+		return
+	}
 
 	if msg.IsAt() && shouldReplyStockHelp(msg.Content) {
 		services.HandleStockHelp(msg)
@@ -20,11 +23,6 @@ func HandleGroupMessage(msg *openwechat.Message) {
 	if strings.Contains(msg.Content, "douyin.com") {
 		services.HandleDouYinLink(msg)
 	}
-	// 如果发送的消息包含过年，则发送当前距离除夕还有多少天
-	if strings.Contains(msg.Content, "过年") {
-		services.HandleNewYearCountdown(msg)
-	}
-
 	// 处理股票相关指令
 	if strings.HasPrefix(msg.Content, "股票") {
 		services.HandleStockCommand(msg)
@@ -54,12 +52,4 @@ func shouldReplyStockHelp(content string) bool {
 		return true
 	}
 	return len(remaining) == 1 && remaining[0] == "股票"
-}
-
-func handleSpecialKeywords(msg *openwechat.Message) {
-	switch {
-	// ... 其他 case
-	case strings.Contains(msg.Content, "股票"):
-		services.HandleStockQuery(msg)
-	}
 }
